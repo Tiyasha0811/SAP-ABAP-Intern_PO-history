@@ -1,0 +1,387 @@
+*&---------------------------------------------------------------------*
+*& Report ZREPORT_ALV_MM_1
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zreport_alv_mm_2.
+
+TYPE-POOLS: slis.
+TABLES: ekko,ekpo,mseg,lfa1,rseg.
+
+TYPES: BEGIN OF ty_ekko,
+         ebeln TYPE ekko-ebeln,
+         bedat TYPE ebdat,
+         bsart TYPE esart,
+         bukrs TYPE bukrs,
+         lifnr TYPE elifn,
+       END OF ty_ekko.
+
+TYPES: BEGIN OF ty_lfa1,
+         lifnr TYPE lifnr,
+         name1 TYPE name1_gp,
+       END OF ty_lfa1.
+
+TYPES: BEGIN OF ty_ekpo,
+         ebeln      TYPE ebeln,
+         ebelp      TYPE ekpo-ebelp,
+         ekpo_matnr TYPE matnr,
+         txz01      TYPE ekpo-txz01,
+         ekpo_MENGE TYPE bstmg,
+         ekpo_MEINS TYPE bstme,
+         ekpo_werks TYPE ewerk,
+       END OF ty_ekpo.
+
+TYPES: BEGIN OF ty_mseg,
+         ebeln      TYPE ebeln,
+         mblnr      TYPE mblnr,
+         mjahr      TYPE mjahr,
+         budat_mkpf TYPE budat,
+         zeile      TYPE mblpo,
+         mseg_MENGE TYPE menge_d,
+         mseg_MEINS TYPE mseg-meins,
+         mseg_werks TYPE werks_d,
+         lgort      TYPE lgort_d,
+         bwart      TYPE bwart,
+         shkzg      TYPE shkzg,
+       END OF ty_mseg.
+
+TYPES: BEGIN OF ty_rseg,
+         ebeln      TYPE ebeln,
+         belnr      TYPE belnr_d,
+         gjahr      TYPE gjahr,
+         buzei      TYPE rblgp,
+         wrbtr      TYPE wrbtr_cs,
+         rseg_MATNR TYPE matnr,
+         rseg_MENGE TYPE menge_d,
+       END OF ty_rseg.
+
+TYPES: BEGIN OF ty_final,
+         ebeln      TYPE ebeln,
+         ebelp      TYPE ekpo-ebelp,
+         bedat      TYPE ebdat,
+         bsart      TYPE esart,
+         bukrs      TYPE bukrs,
+         lifnr      TYPE   elifn,
+         name1      TYPE Name1_gp,
+         ekpo_matnr TYPE matnr,
+         ekpo_menge TYPE bstmg,
+         ekpo_meins TYPE bstme,
+         txz01      TYPE txz01,
+         ekpo_werks TYPE ewerk,
+         mblnr      TYPE mblnr,
+         mjahr      TYPE mjahr,
+         budat_mkpf TYPE budat,
+         zeile      TYPE mblpo,
+         mseg_menge TYPE menge_d,
+         mseg_meins TYPE meins,
+         mseg_werks TYPE werks_d,
+         lgort      TYPE lgort_d,
+         bwart      TYPE bwart,
+         shkzg      TYPE shkzg,
+         belnr      TYPE belnr_d,
+         gjahr      TYPE gjahr,
+         buzei      TYPE rblgp,
+         wrbtr      TYPE wrbtr_cs,
+         rseg_menge TYPE menge_d,
+       END OF ty_final.
+
+DATA: it_ekko  TYPE STANDARD TABLE OF ty_ekko,
+      wa_ekko  TYPE ty_ekko,
+      it_ekpo  TYPE STANDARD TABLE OF ty_ekpo,
+      wa_ekpo  TYPE ty_ekpo,
+      it_lfa1  TYPE STANDARD TABLE OF ty_lfa1,
+      wa_lfa1  TYPE ty_lfa1,
+      it_mseg  TYPE STANDARD TABLE OF ty_mseg,
+      wa_mseg  TYPE ty_mseg,
+      it_rseg  TYPE STANDARD TABLE OF ty_rseg,
+      wa_rseg  TYPE ty_rseg,
+      it_FINAL TYPE STANDARD TABLE OF ty_final,
+      wa_final TYPE ty_final.
+
+
+DATA: it_fieldcat TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv.
+
+DATA: it_sort TYPE slis_t_sortinfo_alv,
+      wa_sort TYPE slis_sortinfo_alv.
+
+DATA: gs_layout TYPE slis_layout_alv.
+
+SELECTION-SCREEN: BEGIN OF BLOCK a WITH FRAME.
+  SELECT-OPTIONS: s_ebeln FOR ekko-ebeln,
+                  s_bedat FOR ekko-bedat,
+                  s_bukrs FOR ekko-bukrs,
+                  s_bsart FOR ekko-bsart.
+SELECTION-SCREEN: END OF BLOCK a.
+
+
+
+AT SELECTION-SCREEN.
+  IF s_ebeln IS INITIAL AND s_bedat IS INITIAL.
+    MESSAGE 'Please enter either PO No. or PO Date' TYPE 'E'.
+  ENDIF.
+
+  IF s_ebeln-high - s_ebeln-low > 1000.
+    MESSAGE 'PO Number range should not exceed 600' TYPE 'E'.
+  ENDIF.
+
+  IF s_bedat-high - s_bedat-low > 30.
+    MESSAGE 'Date range should not exceed 30 days' TYPE 'E'.
+  ENDIF.
+
+INITIALIZATION.
+
+START-OF-SELECTION.
+
+
+  PERFORM fetch_data.
+
+  IF it_final IS INITIAL.
+    MESSAGE 'No data available .' TYPE 'S' DISPLAY LIKE 'E'.
+  ELSE.
+    PERFORM fieldcatalog.
+    PERFORM calc.
+    PERFORM print_output.
+  ENDIF.
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form fetch_data
+*&---------------------------------------------------------------------*
+FORM fetch_data .
+
+  SELECT ek~ebeln,
+      ep~ebelp,
+     ek~bedat,
+     ek~bsart,
+     ek~bukrs,
+     ek~lifnr,
+       l~name1,
+     ep~matnr AS ekpo_matnr,
+      ep~menge AS ekpo_menge,
+      ep~meins AS ekpo_meins,
+     ep~txz01,
+    ep~werks AS ekpo_werks,
+       m~mblnr,
+       m~mjahr,
+       m~budat_mkpf,
+       m~zeile,
+       m~menge AS mseg_menge,
+       m~meins AS mseg_meins,
+       m~werks AS mseg_werks,
+       m~lgort,
+       m~bwart,
+       m~shkzg,
+       r~belnr,
+       r~gjahr,
+       r~buzei,
+       r~wrbtr,
+       r~menge AS rseg_menge
+
+    INTO CORRESPONDING FIELDS OF TABLE @it_final
+    FROM ekko AS ek
+    INNER JOIN ekpo AS ep ON ek~ebeln = ep~ebeln
+    INNER JOIN lfa1 AS l ON ek~lifnr = l~lifnr
+    LEFT OUTER JOIN mseg AS m ON m~ebeln = ep~ebeln AND m~ebelp = ep~ebelp
+    LEFT OUTER JOIN rseg AS r ON r~ebeln = ep~ebeln AND r~ebelp = ep~ebelp
+    WHERE ek~ebeln IN @s_ebeln
+    AND ek~bedat IN @s_bedat
+      AND ek~bukrs IN @s_bukrs
+   AND ek~bstyp = 'F'.
+
+ENDFORM.
+
+
+FORM user_command USING r_ucomm TYPE sy-ucomm
+                        rs_selfield TYPE slis_selfield.
+
+
+  CASE r_ucomm.
+    WHEN '&IC1'.  " Double-click or hotspot click
+
+      IF rs_selfield-fieldname = 'EBELN'.
+        READ TABLE it_final INTO wa_final INDEX rs_selfield-tabindex.
+        SET PARAMETER ID 'BES' FIELD wa_final-ebeln.
+        CALL TRANSACTION 'ME23N' AND SKIP FIRST SCREEN.
+      ENDIF.
+
+      IF rs_selfield-fieldname = 'MBLNR'.
+        READ TABLE it_final INTO wa_final INDEX rs_selfield-tabindex.
+        SET PARAMETER ID 'MBN' FIELD wa_final-mblnr.
+        sET PARAMETER ID 'MJA' FIELD wa_final-mjahr.
+        CALL TRANSACTION 'MIGO' AND SKIP FIRST SCREEN.
+      ENDIF.
+
+  ENDCASE.
+
+ENDFORM.
+
+
+
+
+FORM fieldcatalog.
+
+  DEFINE add_field.
+    wa_fieldcat-fieldname = &1.
+    wa_fieldcat-seltext_m = &2.
+    wa_fieldcat-outputlen = &3.
+    APPEND wa_fieldcat TO it_fieldcat.
+    CLEAR wa_fieldcat.
+  END-OF-DEFINITION.
+
+
+  add_field 'EBELN'               'PO Number'     15.
+  add_field 'EBELP'               'Item No.'      10.
+  add_field 'BEDAT'               'PO Date'       12.
+  add_field 'BSART'               'Doc. Type'     10.
+  add_field 'BUKRS'               'Company Code'  10.
+  add_field 'LIFNR'               'Vendor No.'    10.
+  add_field 'NAME1'               'Vendor Name'   25.
+  add_field 'ekpo_MATNR'          'Material No.'  18.
+  add_field 'ekpo_MENGE'          'PO Quantity'   10.
+  add_field 'ekpo_MEINS'          'PO UoM'        06.
+  add_field 'TXZ01'               'Description'   30.
+  add_field 'ekpo_WERKS'          'PLANT'         04.
+  add_field 'MBLNR'               'GR Doc No.'    15.
+  add_field 'MJAHR'               'GR Year'       06.
+  add_field 'BUDAT_MKPF'          'GR Date'       10.
+  add_field 'ZEILE'               'GR Item'       06.
+  add_field 'mseg_MENGE'          'GR Quantity'   10.
+  add_field 'mseg_MEINS'          'GR UoM'        06.
+  add_field 'mseg_WERKS'          'GR PLANT'      07.
+  add_field 'LGORT'               'GR Stg. loc.'  07.
+  add_field 'BWART'               'GR MvT'        06.
+  add_field 'SHKZG'               'DBT/CDT'       05.
+  add_field 'BELNR'               'Inv. Doct no.' 15.
+  add_field 'GJAHR'               'Inv. year'     06.
+  add_field 'BUZEI'               'Inv. item'     06.
+  add_field 'WRBTR'               'Inv. Amount'   15.
+  add_field 'rseg_MENGE'          'Inv. Qty'      10.
+
+  LOOP AT it_fieldcat INTO wa_fieldcat.
+    CASE wa_fieldcat-fieldname.
+      WHEN 'ekpo_MENGE' OR 'mseg_MENGE' OR 'rseg_MENGE'.
+        wa_fieldcat-do_sum = 'X'.
+        MODIFY it_fieldcat FROM wa_fieldcat INDEX sy-tabix.
+    ENDCASE.
+  ENDLOOP.
+
+  LOOP AT it_fieldcat INTO wa_fieldcat.
+    CASE wa_fieldcat-fieldname.
+      WHEN 'WRBTR'.
+        wa_fieldcat-do_sum = 'X'.
+        MODIFY it_fieldcat FROM wa_fieldcat INDEX sy-tabix.
+    ENDCASE.
+  ENDLOOP.
+
+
+  READ TABLE it_fieldcat INTO wa_fieldcat WITH KEY fieldname = 'EBELN'.
+  IF sy-subrc = 0.
+    wa_fieldcat-hotspot = 'X'.
+    MODIFY it_fieldcat FROM wa_fieldcat INDEX sy-tabix.
+  ENDIF.
+
+  READ TABLE it_fieldcat INTO wa_fieldcat WITH KEY fieldname = 'MBLNR'.
+  IF sy-subrc = 0.
+    wa_fieldcat-hotspot = 'X'.
+    MODIFY it_fieldcat FROM wa_fieldcat INDEX sy-tabix.
+  ENDIF.
+
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form calc
+*&---------------------------------------------------------------------*
+
+FORM calc.
+
+  CLEAR wa_sort.
+  wa_sort-fieldname = 'EBELN'.
+  wa_sort-fieldname = 'EBELP'.
+  wa_sort-up = 'X'.
+  wa_sort-subtot = 'X'.
+  APPEND wa_sort TO it_sort. " No subtotals needed at this level
+
+ENDFORM.
+
+
+
+FORM print_output.
+
+  SORT it_final BY ebelp ebeln mblnr zeile belnr buzei.
+  " Sort the final internal table by PO and Item Number
+
+  LOOP AT it_final INTO wa_final.
+    " Process negative values for credit entries
+    IF wa_final-shkzg = 'H'.
+      wa_final-mseg_menge = wa_final-mseg_menge * -1.
+      wa_final-rseg_menge = wa_final-rseg_menge * -1.
+      wa_final-wrbtr = wa_final-wrbtr * -1.
+
+      " Update the table
+      MODIFY it_final FROM wa_final INDEX sy-tabix.
+    ENDIF.
+  ENDLOOP.
+
+     gs_layout-no_totalline ='X'.        " Remove grand total line
+
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+*     I_INTERFACE_CHECK       = ' '
+*     I_BYPASSING_BUFFER      = ' '
+*     I_BUFFER_ACTIVE         = ' '
+      i_callback_program      = sy-repid
+*     I_CALLBACK_PF_STATUS_SET          = ' '
+      i_callback_user_command = 'USER_COMMAND'
+*     I_CALLBACK_TOP_OF_PAGE  = ' '
+*     I_CALLBACK_HTML_TOP_OF_PAGE       = ' '
+*     I_CALLBACK_HTML_END_OF_LIST       = ' '
+*     I_STRUCTURE_NAME        = 'ZSTR_MM_1'
+*     I_BACKGROUND_ID         = ' '
+*     I_GRID_TITLE            =
+*     I_GRID_SETTINGS         =
+      is_layout               = gs_layout
+      it_fieldcat             = it_fieldcat
+*     IT_EXCLUDING            =
+*     IT_SPECIAL_GROUPS       =
+      it_sort                 = it_sort
+*     IT_FILTER               =
+*     IS_SEL_HIDE             =
+*     I_DEFAULT               = 'X'
+*     I_SAVE                  = ' '
+*     IS_VARIANT              =
+*      it_events               = it_events
+*     IT_EVENT_EXIT           =
+*     IS_PRINT                =
+*     IS_REPREP_ID            =
+*     I_SCREEN_START_COLUMN   = 0
+*     I_SCREEN_START_LINE     = 0
+*     I_SCREEN_END_COLUMN     = 0
+*     I_SCREEN_END_LINE       = 0
+*     I_HTML_HEIGHT_TOP       = 0
+*     I_HTML_HEIGHT_END       = 0
+*     IT_ALV_GRAPHICS         =
+*IT_HYPERLINK                      = 'X'
+*     IT_ADD_FIELDCAT         =
+*     IT_EXCEPT_QINFO         =
+*     IR_SALV_FULLSCREEN_ADAPTER        =
+*     O_PREVIOUS_SRAL_HANDLER =
+*     O_COMMON_HUB            =
+* IMPORTING
+*     E_EXIT_CAUSED_BY_CALLER =
+*     ES_EXIT_CAUSED_BY_USER  =
+    TABLES
+      t_outtab                = it_final
+    EXCEPTIONS
+      program_error           = 1
+      OTHERS                  = 2.
+  IF sy-subrc <> 0.
+
+  ENDIF.
+
+ENDFORM.

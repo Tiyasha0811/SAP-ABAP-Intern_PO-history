@@ -1,0 +1,97 @@
+*&---------------------------------------------------------------------*
+*& Report ZTEST_EMP_DETAILS
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ztest_emp_details NO STANDARD PAGE HEADING
+       LINE-SIZE 200 LINE-COUNT 64(1).
+
+TABLES:yemp,yempp.
+
+SELECTION-SCREEN:BEGIN OF BLOCK gg WITH FRAME.
+*  PARAMETERS:P_id TYPE YEID.
+  SELECT-OPTIONS:s_id FOR  yemp-employee_id.
+SELECTION-SCREEN:END OF BLOCK gg.
+
+*SELECTION-SCREEN:BEGIN OF BLOCK AA WITH FRAME.
+**  PARAMETERS:P_id TYPE YEID.
+* SELECT-OPTIONS:L_ID FOR  YEMP-EMPLOYEE_ID.
+*SELECTION-SCREEN:END OF BLOCK AA.
+
+TYPES:BEGIN OF ty_yemp,
+        employee_id	  TYPE yeid,
+        employee_name	TYPE yname,
+        contact_no    TYPE ycn,
+        age	          TYPE yage,
+      END OF ty_yemp.
+
+TYPES:BEGIN OF ty_yempp,
+        employee_id	           TYPE yeid,
+        employee_qualification TYPE yempq,
+        employee_address       TYPE yempa,
+      END OF ty_yempp.
+
+TYPES:BEGIN OF ty_final,
+        employee_id	           TYPE yeid,
+        employee_name	         TYPE yname,
+        contact_no             TYPE ycn,
+        age	                   TYPE yage,
+        employee_qualification TYPE yempq,
+        employee_address       TYPE yempa,
+      END OF ty_final.
+
+DATA:it_yemp  TYPE STANDARD TABLE OF ty_yemp,
+     wa_yemp  TYPE ty_yemp,
+
+     it_yempp TYPE STANDARD TABLE OF ty_yempp,
+     wa_yempp TYPE ty_yempp,
+
+     it_final TYPE STANDARD TABLE OF ty_final,
+     wa_final TYPE ty_final.
+
+INITIALIZATION.
+
+START-OF-SELECTION.
+  SELECT employee_id
+         employee_name
+         contact_no
+         age
+  FROM   yemp
+  INTO   TABLE it_yemp
+  WHERE  employee_id IN s_id.
+
+
+  IF it_yemp IS NOT INITIAL.
+    SELECT employee_id
+           employee_qualification
+           employee_address
+     FROM  yempp
+     INTO  TABLE it_yempp
+     FOR ALL ENTRIES IN it_yemp
+     WHERE employee_id = it_yemp-employee_id.
+
+
+  ENDIF.
+  SORT it_yempp BY employee_id.
+  LOOP AT it_yemp  INTO wa_yemp.
+    wa_final-employee_id = wa_yemp-employee_id.
+    wa_final-employee_name = wa_yemp-employee_name.
+    wa_final-contact_no = wa_yemp-contact_no.
+    wa_final-age = wa_yemp-age.
+    READ TABLE it_yempp INTO wa_yempp WITH KEY employee_id = wa_yemp-employee_id BINARY SEARCH.
+    IF sy-subrc = 0.
+      wa_final-employee_qualification = wa_yempp-employee_qualification.
+      wa_final-employee_address = wa_yempp-employee_address.
+    ENDIF.
+
+    APPEND wa_final TO it_final.
+  ENDLOOP.
+
+  LOOP AT it_final INTO wa_final.
+    WRITE:/ wa_final-employee_id,
+            wa_final-employee_name,
+            wa_final-contact_no,
+            wa_final-age,
+            wa_final-employee_qualification,
+            wa_final-employee_address.
+  ENDLOOP.

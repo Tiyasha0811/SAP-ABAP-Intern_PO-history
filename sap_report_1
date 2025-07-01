@@ -1,0 +1,95 @@
+*&---------------------------------------------------------------------*
+*& Report ZMM_GR_DETAILS
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zmm_gr_details.
+
+TABLES: ekko, mseg, ymm_po_gr.
+
+TYPES: BEGIN OF ty_gr,
+         ebeln TYPE ebeln,
+         ebelp TYPE ebelp,
+         mblnr  TYPE mblnr,
+         mjahr  TYPE mjahr,
+         zeile  TYPE mblpo,
+         menge TYPE menge_d,
+         meins TYPE meins,
+         loekz TYPE eloek,
+       END OF ty_gr.
+
+DATA: it_gr  TYPE STANDARD TABLE OF ty_gr,
+      wa_gr  TYPE ty_gr,
+      it_tab TYPE STANDARD TABLE OF ymm_po_gr,
+      wa_tab TYPE ymm_po_gr.
+
+SELECTION-SCREEN: BEGIN OF BLOCK a WITH FRAME.
+  SELECT-OPTIONS: s_ebeln FOR mseg-ebeln.
+  PARAMETERS: p_upload RADIOBUTTON GROUP grp DEFAULT 'X',
+              p_delete RADIOBUTTON GROUP grp.
+SELECTION-SCREEN: END OF BLOCK a.
+
+INITIALIZATION.
+
+START-OF-SELECTION.
+
+
+*----------------------------------------------*
+* DELETE Logic
+*----------------------------------------------*
+  IF p_delete = 'X'.
+
+    DELETE FROM ymm_po_gr WHERE ebeln IN s_ebeln.
+
+    IF sy-subrc = 0.
+      MESSAGE 'Records deleted from table YMM_PO_GR successfully.' TYPE 'S'.
+    ELSE.
+      MESSAGE 'No records found to delete in table YMM_PO_GR.' TYPE 'E'.
+    ENDIF.
+
+    RETURN.
+
+  ENDIF.
+
+
+
+*----------------------------------------------*
+* UPLOAD Logic
+*----------------------------------------------*
+  IF p_upload = 'X'.
+    SELECT ebeln ebelp mblnr mjahr zeile menge meins
+    FROM   mseg
+    INTO   TABLE it_gr
+    WHERE ebeln IN s_ebeln.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'No GR data found for given PO(s).' TYPE 'E'.
+      RETURN.
+    ENDIF.
+
+    SORT it_gr BY ebeln.
+    LOOP AT it_gr  INTO wa_gr.
+
+      IF wa_gr-loekz = ' '.
+
+        wa_tab-ebeln = wa_gr-ebeln.
+        wa_tab-ebelp = wa_gr-ebelp.
+        wa_tab-mblnr = wa_gr-mblnr.
+        wa_tab-mjahr = wa_gr-mjahr.
+        wa_tab-zeile = wa_gr-zeile.
+        wa_tab-menge = wa_gr-menge.
+        wa_tab-meins = wa_gr-meins.
+
+        APPEND wa_tab TO it_tab.
+        CLEAR wa_tab.
+      ENDIF.
+    ENDLOOP.
+
+    IF it_tab IS NOT INITIAL OR sy-subrc = 0.
+      MODIFY ymm_po_gr FROM TABLE it_tab.
+      MESSAGE 'Data had been inserted to custom table.' TYPE 'S'.
+    ELSE.
+      MESSAGE 'Data could not be uploaded.' TYPE 'E'.
+    ENDIF.
+
+  ENDIF.

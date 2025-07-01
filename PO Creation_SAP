@@ -1,0 +1,281 @@
+*&---------------------------------------------------------------------*
+*& Report ZREPORT_PO_UPLOAD
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zreport_po_upload.
+
+TABLES: ekpo, ekko, ekkn.
+TYPE-POOLS: truxs.
+
+TYPES: BEGIN OF ty_upload,
+         po_start,
+         po_end,
+         bukrs    TYPE ekko-bukrs,
+         bsart    TYPE ekko-bsart,
+         lifnr    TYPE ekko-lifnr,
+         bedat    TYPE ekko-bedat,
+         ekorg    TYPE ekko-ekorg,
+         ekgrp    TYPE ekko-ekgrp,
+         inco1    TYPE ekko-inco1,
+         inco2_l  TYPE ekko-inco2_l,
+         zterm    TYPE ekko-zterm,
+         ebelp    TYPE ekpo-ebelp,
+         knttp    TYPE ekpo-knttp,
+         matnr    TYPE ekpo-matnr,
+         txz01    TYPE ekpo-txz01,
+         menge    TYPE ekpo-menge,
+         meins    TYPE ekpo-meins,
+         netpr    TYPE ekpo-netpr,
+         matkl    TYPE ekpo-matkl,
+         werks    TYPE ekpo-werks,
+         mwskz    TYPE ekpo-mwskz,
+         zekkn    TYPE ekkn-zekkn,
+         sakto    TYPE saknr,
+         kostl    TYPE ekpo-kostl,
+         steuc    TYPE steuc,
+       END OF ty_upload.
+
+
+DATA: it_upload TYPE STANDARD TABLE OF ty_upload,
+      wa_upload TYPE ty_upload,
+      it_raw    TYPE truxs_t_text_data,
+      rs_tabix  TYPE sy-tabix.
+
+DATA: gv_file_exists, gv_filename    TYPE string.
+DATA: gt_return   LIKE bapiret2 OCCURS 0 WITH HEADER LINE.
+
+SELECTION-SCREEN: BEGIN OF BLOCK a WITH FRAME TITLE TEXT-001.
+  PARAMETERS: p_ifname TYPE rlgrap-filename OBLIGATORY.
+SELECTION-SCREEN: END OF BLOCK a.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_ifname.
+  CALL FUNCTION 'F4_FILENAME'
+    EXPORTING
+      field_name = 'p_ifname'
+    IMPORTING
+      file_name  = p_ifname.
+
+START-OF-SELECTION.
+  gv_filename = p_ifname.
+  CALL METHOD cl_gui_frontend_services=>file_exist
+    EXPORTING
+      file   = gv_filename
+    RECEIVING
+      result = gv_file_exists
+    EXCEPTIONS
+      OTHERS = 4.
+
+  IF gv_file_exists = 'X'.
+    CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+      EXPORTING
+*       I_FIELD_SEPERATOR    =
+        i_line_header        = 'X'
+        i_tab_raw_data       = it_raw
+        i_filename           = p_ifname
+*       I_STEP               = 1
+*       I_FILENAME_LONG      =
+      TABLES
+        i_tab_converted_data = it_upload[]
+      EXCEPTIONS
+        conversion_failed    = 1
+        OTHERS               = 2.
+
+    IF sy-subrc = 1.
+      MESSAGE: 'Error in file! Upload failed!... Check file for data format' TYPE 'S' DISPLAY LIKE 'E'.
+    ELSE.
+      IF it_upload IS NOT INITIAL.
+        PERFORM process_data.
+      ELSE.
+        MESSAGE: 'Error: No data uploaded!... Check file name given' TYPE 'S' DISPLAY LIKE 'E'.
+      ENDIF.
+    ENDIF.
+  ELSE.
+    MESSAGE 'File does not exist ....' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+*&---------------------------------------------------------------------*
+*& Form process_data
+*&---------------------------------------------------------------------*
+FORM process_data .
+
+  CONSTANTS : c_x         VALUE 'X',
+              cdate       TYPE sy-datum VALUE '20150331',
+              c_text_id   TYPE tdid VALUE 'F26',    "Added TR: DEVK9A0NO3
+              c_text_form TYPE tdformat VALUE '*',  "Added TR: DEVK9A0NO3
+              c_text_line TYPE tdline VALUE 'NA',   "Added TR: DEVK9A0NO3
+              c_po_item   TYPE ebelp VALUE '00000'. "Added TR: DEVK9A0NO3
+
+**Structures to hold PO header data
+  DATA : lwa_header  TYPE bapimepoheader,
+         lwa_headerx TYPE bapimepoheaderx.
+
+**Internal Tables to hold PO ITEM DATA
+  DATA : it_item         TYPE STANDARD TABLE OF bapimepoitem,
+         wa_item         TYPE bapimepoitem,
+         it_itemx        TYPE STANDARD TABLE OF bapimepoitemx,
+         wa_itemx        TYPE bapimepoitemx,
+         it_item_gl      TYPE STANDARD TABLE OF bapimepoaccount,
+         wa_item_gl      TYPE bapimepoaccount,
+         it_item_glx     TYPE STANDARD TABLE OF bapimepoaccountx,
+         wa_item_glx     TYPE bapimepoaccountx,
+         it_return       TYPE STANDARD TABLE OF bapiret2,
+         wa_return       TYPE bapiret2,
+         it_potextheader LIKE bapimepotextheader OCCURS 0 WITH HEADER LINE.
+
+  DATA : lv_purcord      TYPE bapimepoheader-po_number,
+         lst_hdr         TYPE bapimepoheader,
+         lst_poimpheader TYPE bapieikp.
+
+
+  LOOP AT it_upload INTO wa_upload.
+    IF wa_upload-po_start = 'X'.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+        EXPORTING
+          input  = wa_upload-lifnr
+        IMPORTING
+          output = wa_upload-lifnr.
+
+      lwa_header-comp_code = wa_upload-bukrs.
+      lwa_header-doc_type = wa_upload-bsart.
+      lwa_header-vendor = wa_upload-lifnr.
+      lwa_header-doc_date = wa_upload-bedat.
+      lwa_header-purch_org = wa_upload-ekorg.
+      lwa_header-pur_group = wa_upload-ekgrp.
+      lwa_header-incoterms1 = wa_upload-inco1.
+      lwa_header-incoterms2l = wa_upload-inco2_l.
+      lwa_header-pmnttrms = wa_upload-zterm.
+      lwa_header-langu = sy-langu.
+
+      lwa_headerx-comp_code = c_x.
+      lwa_headerx-doc_type = c_x.
+      lwa_headerx-vendor = c_x.
+      lwa_headerx-doc_date = c_x.
+      lwa_headerx-purch_org = c_x.
+      lwa_headerx-pur_group = c_x.
+      lwa_headerx-incoterms1 = c_x.
+      lwa_headerx-incoterms2l = c_x.
+      lwa_headerx-pmnttrms = c_x.
+      lwa_headerx-langu = sy-langu.
+
+**** Begin of addition for addition of header text
+      it_potextheader-po_item  = c_po_item.
+      it_potextheader-text_id = c_text_id.
+      it_potextheader-text_form = c_text_form.
+      it_potextheader-text_line = c_text_line.
+      APPEND it_potextheader.
+**** End of addition for addition of header text
+    ENDIF.
+
+    wa_item-po_item = wa_upload-ebelp.
+    wa_item-acctasscat = wa_upload-knttp.
+    wa_item-material = wa_upload-matnr.
+    wa_item-material_external = wa_upload-matnr.
+    wa_item-ematerial = wa_upload-matnr.
+    wa_item-short_text = wa_upload-txz01.
+    wa_item-quantity = wa_upload-menge.
+    wa_item-po_unit = wa_upload-meins.
+    wa_item-net_price = wa_upload-netpr.
+    wa_item-matl_group = wa_upload-matkl.
+    wa_item-plant = wa_upload-werks.
+    wa_item-tax_code = wa_upload-mwskz.
+    wa_item-bras_nbm = wa_upload-steuc.
+
+    wa_itemx-po_item = wa_upload-ebelp.
+    wa_itemx-po_itemx = c_x.
+    wa_itemx-acctasscat = c_x.
+    wa_itemx-material = c_x.
+    wa_itemx-material_external = c_x.
+    wa_itemx-ematerial = c_x.
+    wa_itemx-short_text = c_x.
+    wa_itemx-quantity = c_x.
+    wa_itemx-po_unit = c_x.
+    wa_itemx-net_price = c_x.
+    wa_itemx-matl_group = c_x.
+    wa_itemx-plant = c_x.
+    wa_itemx-tax_code = c_x.
+    wa_itemx-bras_nbm = c_x.
+
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = wa_upload-sakto
+      IMPORTING
+        output = wa_upload-sakto.
+
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = wa_upload-zekkn
+      IMPORTING
+        output = wa_upload-zekkn.
+
+    wa_item_gl-po_item = wa_upload-ebelp.
+    wa_item_gl-serial_no = wa_upload-zekkn.
+    wa_item_gl-gl_account = wa_upload-sakto.
+    wa_item_gl-costcenter = wa_upload-kostl.
+
+    wa_item_glx-po_item = wa_upload-ebelp.
+    wa_item_glx-serial_no = wa_upload-zekkn.
+    wa_item_glx-po_itemx = c_x.
+    wa_item_glx-serial_nox = c_x.
+    wa_item_glx-gl_account =  c_x.
+    wa_item_glx-costcenter = c_x.
+
+    APPEND wa_item TO it_item.
+    APPEND wa_itemx TO it_itemx.
+    APPEND wa_item_gl TO it_item_gl.
+    APPEND wa_item_glx TO it_item_glx.
+
+    IF wa_upload-po_end = 'X'.
+      CALL FUNCTION 'BAPI_PO_CREATE1'
+        EXPORTING
+          poheader          = lwa_header
+          poheaderx         = lwa_headerx
+          no_price_from_po  = 'X'
+        IMPORTING
+          exppurchaseorder  = lv_purcord
+          expheader         = lst_hdr
+          exppoexpimpheader = lst_poimpheader
+        TABLES
+          return            = it_return
+          potextheader      = it_potextheader
+          poitem            = it_item
+          poitemx           = it_itemx
+          poaccount         = it_item_gl
+          poaccountx        = it_item_glx.
+
+      IF lv_purcord IS NOT INITIAL.
+        CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+          EXPORTING
+            wait = 'X'.
+      ENDIF.
+      CLEAR:wa_upload, lwa_header, lwa_headerx, lv_purcord, lst_hdr, lst_poimpheader.
+      REFRESH it_item.
+      REFRESH it_itemx.
+      REFRESH it_item_gl.
+      REFRESH it_item_glx.
+      REFRESH it_potextheader.
+      APPEND LINES OF it_return TO gt_return.
+      REFRESH it_return.
+    ENDIF.
+  ENDLOOP.
+  PERFORM report_system_messages.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form report_system_messages
+*&---------------------------------------------------------------------*
+
+FORM report_system_messages .
+
+  DATA: lt_fcode  TYPE TABLE OF sy-ucomm, wa_return TYPE bapiret2.
+  APPEND 'PICK' TO lt_fcode.
+  SET PF-STATUS 'PICK' EXCLUDING lt_fcode OF PROGRAM 'SAPMSSY0'.
+  ULINE /3(165).
+  WRITE:/3 'Type', 10 'ID', 25 'Number', 40 'Message'.
+  ULINE /3(165).
+  LOOP AT gt_return INTO wa_return..
+    CONDENSE wa_return-message.
+    WRITE:/3 wa_return-type, 10 wa_return-id, 25 wa_return-number, 40 wa_return-message(120).
+  ENDLOOP.
+ENDFORM.
